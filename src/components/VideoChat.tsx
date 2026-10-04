@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Mic,
   MicOff,
   Video,
   VideoOff,
-  PhoneOff,
-  ChevronUp,
-  ChevronDown,
 } from "lucide-react";
 import { socket } from "../lib/socket";
 
@@ -32,6 +30,14 @@ const MEDIA_AUDIO = {
   noiseSuppression: true,
   autoGainControl: true,
 };
+
+function usePortalTarget(id: string) {
+  const [target, setTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setTarget(document.getElementById(id));
+  }, [id]);
+  return target;
+}
 
 function useVideoChat(roomId: string) {
   const pcs = useRef(new Map<string, RTCPeerConnection>());
@@ -374,10 +380,8 @@ const Tile = ({
 
 const VideoPanel = ({
   roomId,
-  onHangUp,
 }: {
   roomId: string;
-  onHangUp: () => void;
 }) => {
   const {
     localStream,
@@ -391,91 +395,65 @@ const VideoPanel = ({
     hasAudio,
     hasVideo,
   } = useVideoChat(roomId);
-  const [collapsed, setCollapsed] = useState(false);
-
+  const portalTarget = usePortalTarget("video-chat-portal-target");
   const peerIds = Object.keys(peerStates);
 
-  const btn =
-    "flex h-9 w-9 items-center justify-center rounded-full transition disabled:opacity-40";
+  const btn = "flex h-9 w-9 items-center justify-center rounded-full transition disabled:opacity-40";
+  
+  const controls = (
+    <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 shadow-xl">
+      <button
+        onClick={toggleMic}
+        disabled={!hasAudio}
+        className={`${btn} ${
+          micOn ? "text-zinc-400 hover:bg-zinc-800 hover:text-white" : "bg-red-500/20 text-red-400"
+        }`}
+      >
+        {micOn ? <Mic size={18} /> : <MicOff size={18} />}
+      </button>
+      <button
+        onClick={toggleCam}
+        disabled={!hasVideo}
+        className={`${btn} ${
+          camOn ? "text-zinc-400 hover:bg-zinc-800 hover:text-white" : "bg-red-500/20 text-red-400"
+        }`}
+      >
+        {camOn ? <Video size={18} /> : <VideoOff size={18} />}
+      </button>
+    </div>
+  );
 
   return (
-    <div className="fixed right-4 top-4 z-50 flex w-52 flex-col gap-2">
-      {!collapsed && (
-        <>
+    <>
+      <div className="fixed right-4 top-4 z-50 flex w-52 flex-col gap-2">
+        <Tile
+          stream={localStream}
+          label="You"
+          muted
+          mirror
+          micOn={micOn}
+          camOn={camOn}
+        />
+        {peerIds.map((id, i) => (
           <Tile
-            stream={localStream}
-            label="You"
-            muted
-            mirror
-            micOn={micOn}
-            camOn={camOn}
+            key={id}
+            stream={remoteStreams[id] ?? null}
+            label={`Guest ${i + 1}`}
+            micOn={peerStates[id].micOn}
+            camOn={peerStates[id].camOn}
           />
-          {peerIds.map((id, i) => (
-            <Tile
-              key={id}
-              stream={remoteStreams[id] ?? null}
-              label={`Guest ${i + 1}`}
-              micOn={peerStates[id].micOn}
-              camOn={peerStates[id].camOn}
-            />
-          ))}
-          {error && (
-            <p className="rounded-lg bg-zinc-900 px-2 py-1 text-[11px] text-amber-400">
-              {error}
-            </p>
-          )}
-        </>
-      )}
-
-      <div className="flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-900 px-2 py-1.5 shadow-xl">
-        <button
-          onClick={toggleMic}
-          disabled={!hasAudio}
-          className={`${btn} ${
-            micOn ? "text-zinc-300 hover:bg-zinc-800" : "bg-red-500/20 text-red-400"
-          }`}
-        >
-          {micOn ? <Mic size={16} /> : <MicOff size={16} />}
-        </button>
-        <button
-          onClick={toggleCam}
-          disabled={!hasVideo}
-          className={`${btn} ${
-            camOn ? "text-zinc-300 hover:bg-zinc-800" : "bg-red-500/20 text-red-400"
-          }`}
-        >
-          {camOn ? <Video size={16} /> : <VideoOff size={16} />}
-        </button>
-        <button
-          onClick={() => setCollapsed((c) => !c)}
-          className={`${btn} text-zinc-300 hover:bg-zinc-800`}
-        >
-          {collapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-        </button>
-        <button
-          onClick={onHangUp}
-          className={`${btn} bg-red-500 text-white hover:bg-red-400`}
-        >
-          <PhoneOff size={16} />
-        </button>
+        ))}
+        {error && (
+          <p className="rounded-lg bg-zinc-900 px-2 py-1 text-[11px] text-amber-400">
+            {error}
+          </p>
+        )}
       </div>
-    </div>
+      {portalTarget && createPortal(controls, portalTarget)}
+    </>
   );
 };
 
 export const VideoChat = ({ roomId }: { roomId: string }) => {
-  const [active, setActive] = useState(true);
-
-  if (!active) {
-    return (
-      <button
-        onClick={() => setActive(true)}
-        className="fixed right-4 top-4 z-50 flex items-center gap-2 rounded-full bg-green-500 px-4 py-2 text-sm font-medium text-black hover:bg-green-400"
-      >
-        <Video size={16} /> Join video
-      </button>
-    );
-  }
-
-  return <VideoPanel roomId={roomId} onHangUp={() => setActive(false)} />;
+  return <VideoPanel roomId={roomId} />;
 };
